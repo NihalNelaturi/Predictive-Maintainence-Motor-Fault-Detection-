@@ -1,79 +1,94 @@
-# Audio Classifier
+# Predictive Maintenance - Motor Fault Detection
 
-This application uses TensorFlow Lite for Microcontrollers to run audio
-classification machine learning models to classify words from audio data
-recorded from a microphone. The detection is visualized using the LED's on the
-board and the classification results are written to the VCOM serialport.
+An embedded AI application for **real-time motor fault detection** using audio classification on Silicon Labs EFM32/EFR32 microcontrollers. Built with Simplicity Studio and TensorFlow Lite for Microcontrollers (TFLM).
 
-## Behavior
+---
 
-The application is using two LEDs to show detection and activity and it is
-printing detection results and debug log output on the VCOM serial port. In the
-application configuration file called audio_classifier_config.h the user can
-select which LED to use for activity and which LED to use for detection. By
-default the detection LED is green/led1 and the activity LED is red/led0.
+## Description
 
-At a regular interval the application will perform an inference and the result
-will be processed to find the average score for each class in the current
-window. If the top result score is higher than a detection threshold then a
-detection is triggered and the detection LED (green) will light up for about 750
-ms.
+This project runs an MFCC-based multiclass audio classification model directly on-device to detect motor faults from PCM audio input. It uses the Silicon Labs Machine Learning Toolkit (MLTK) pipeline and the MVP hardware accelerator (where available) for fast, low-power inference — enabling predictive maintenance without cloud connectivity.
 
-Once the detection LED turns off the application goes back to responding to the
-input data. If the change in model output is greater than a configurable
-sensitivity threshold, then the activity LED (red) will blink for about 500 ms.
+---
 
-The activity LED indicates that audio has been detected on the input and the
-model output is changing, but no clear classification was made.
+## Features
 
-In audio classification it is common to have some results that map to silence or
-unknown. These results are something that we usually want to ignore. This is
-being filtered out in the audio classifier application based on the label text.
-By default any labels that start with an underscore are ignored when processing
-results. This behavior can be disabled in the application configuration file.
+- Real-time audio capture via I2S microphone
+- MFCC feature extraction using the Silicon Labs Audio Feature Generator
+- TensorFlow Lite Micro inference with a custom multiclass motor fault model
+- LED indicators for detection and activity status
+- VCOM serial output for classification results and debug logs
+- Configurable detection threshold and sensitivity
+- CMake + GCC build support via `cmake_gcc/`
+
+---
+
+## Project Structure
+
+```
+Final2o/
+├── main.c                          # Application entry point
+├── app.c / app.h                   # Application logic
+├── audio_classifier.cc / .h        # Core audio classification loop
+├── mfcc_multiclass_inference.cc    # MFCC inference pipeline
+├── mfcc_multiclass_model_data.c    # Compiled TFLite model (C array)
+├── motor_pcm_buffer.c / .h         # PCM audio buffer management
+├── recognize_commands.cc / .h      # Post-processing and command recognition
+├── config/                         # Hardware and ML configuration headers
+├── autogen/                        # Auto-generated Simplicity Studio files
+└── cmake_gcc/                      # CMake build system files
+```
+
+---
+
+## How to Import and Run in Simplicity Studio
+
+### Prerequisites
+
+- [Simplicity Studio 5](https://www.silabs.com/developers/simplicity-studio) installed
+- Silicon Labs Gecko SDK installed (matching version in `Final2o.slcp`)
+- Compatible Silicon Labs board (EFR32xG24 or similar with MVP accelerator)
+
+### Import Steps
+
+1. Open **Simplicity Studio 5**.
+2. Go to **File > Import**.
+3. Select **More Import Options > General > Existing Projects into Workspace**.
+4. Click **Browse** and navigate to the cloned repository folder.
+5. Select the project and click **Finish**.
+
+### Build and Flash
+
+1. Right-click the project in **Project Explorer**.
+2. Select **Build Project** — Simplicity Studio will auto-generate files in `autogen/`.
+3. Connect your Silicon Labs board via USB.
+4. Click the **Flash** (Run/Debug) button to program the device.
+
+### Monitor Output
+
+Open a serial terminal (e.g., Tera Term, PuTTY) at **115200 baud** on the VCOM port to view classification results.
+
+---
+
+## Configuration
+
+Edit [`config/audio_classifier_config.h`](config/audio_classifier_config.h) to adjust:
+
+- Detection LED assignment
+- Activity LED assignment
+- Detection threshold
+- Sensitivity threshold
+- Label filtering (underscore-prefixed labels are ignored by default)
+
+---
 
 ## Model
 
-The application uses one of two different available models
-(`keyword_spotting_on_off.tflite` or `keyword_spotting_on_off_v2.tflite`)
-as the default model, depending on whether the application is generated for a
-development board featuring an MVP hardware accelerator or not. When an MVP
-hardware accelerator is featured on the board, inference will run at a faster
-speed such that a larger model can be chosen, yielding more accurate keyword
-detections.
+The model uses MFCC features extracted from 1-second audio windows. It is trained using the [Silicon Labs MLTK](https://siliconlabs.github.io/mltk) and compiled into `mfcc_multiclass_model_data.c`. To replace with a retrained model, update the `.tflite` file in `config/tflite/` — Simplicity Studio will regenerate the C model data automatically.
 
-Details about the model architectures and scripts for generating the models can
-be found in the [Silicon Labs machine learning applications](https://github.com/SiliconLabs/machine_learning_applications/tree/main/) repository, under
-`application/voice/keyword_spotting/model`.
-
-The application is designed to work with an audio classification model created
-using the Silicon Labs Machine Learning Toolkit
-([MLTK](https://siliconlabs.github.io/mltk)). Use the MLTK to train a new audio
-classifier model and replace the model inside this example with the new audio
-classification model. To replace the audio classification model with a new model
-created using the MLTK simply replace the .tflite file in the config/tflite folder
-of this project with your new. tflite file. After a new .tflite file is added
-to the project Simplicity Studio will automatically use the [flatbuffer converter tool](https://docs.silabs.com/machine-learning/latest/aiml-developers-guide/flatbuffer-conversion)
-to convert the .tflite file into a c file which is added to the project.
-
-In order for the audio classification to work correctly we need to use the same
-audio feature generator configuration parameters for inference as is used when
-training the model. When using the MLTK to train an audio classification model
-the model parameters will be embedded in the metadata section of the .tflite
-file. When generating a project this metadata is extracted by tools in the Simplicity
-SDK and placed in the file called sl_tflite_micro_model_parameters.h inside the
-autogen folder of the example.
-
-This example will automatically use the parameters from the .tflite file in
-order to configure the audio feature generator to correctly extract features
-from input audio data which can be passed to TensorFlow when doing inference.
-See the MLTK documentation for more information about the model parameters:
-<https://siliconlabs.github.io/mltk/docs/model_parameters.html>
+---
 
 ## References
 
-The example is based on TensorFlow's example called **[micro speech](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/micro_speech)** and audio is processed using the **[audio feature generator](https://docs.silabs.com/machine-learning/latest/aiml-reference-guide/ml-audio-feature-generation)**.
-
-- [Machine Learning (AI/ML) Documentation](https://docs.silabs.com/machine-learning/latest/aiml-developing-with)
+- [Silicon Labs Machine Learning Documentation](https://docs.silabs.com/machine-learning/latest/aiml-developing-with)
 - [MLTK Documentation](https://siliconlabs.github.io/mltk)
-- [TensorFlow Lite Micro](https://www.tensorflow.org/lite/microcontrollers)
+- [TensorFlow Lite for Microcontrollers](https://www.tensorflow.org/lite/microcontrollers)
