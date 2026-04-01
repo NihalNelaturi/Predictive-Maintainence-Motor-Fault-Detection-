@@ -1,8 +1,10 @@
 # System Architecture — Motor Fault Detection
 
+**Board:** BRD2608A / EFR32MG26 | **Model:** Multiclass Logistic Regression | **Test Accuracy:** 99.67%
+
 ## Overview
 
-This document describes the end-to-end signal processing and inference pipeline running on the EFR32xG26 microcontroller for real-time motor fault classification.
+This document describes the end-to-end signal processing and inference pipeline running on the EFR32MG26 microcontroller for real-time motor fault classification.
 
 ---
 
@@ -105,8 +107,9 @@ feature_vector = [MFCC(13×49) | Δ(13×49) | ΔΔ(13×49)]
 ## Classifier: Multinomial Logistic Regression
 
 The classifier is a **single linear layer** — 6 weight vectors (one per class), each 1,911-dimensional, plus 6 bias scalars. Stored as flash constants:
-- `g_mfcc_multiclass_weight[6 × 1,911]` ≈ 45,864 float32 values (~179 KB)
+- `g_mfcc_multiclass_weight[6 × 1,911]` — 11,466 float32 values
 - `g_mfcc_multiclass_bias[6]`
+- **Total parameters: 11,472 | Float model size: ≈ 44.81 KB | INT8 TFLite: 13,008 bytes (12.7 KB)**
 
 Inference:
 ```
@@ -114,7 +117,9 @@ logit[c] = bias[c] + dot(weight[c], feature_vector)
 probabilities = softmax(logits)
 ```
 
-**Why logistic regression?** It is deterministic, has no activation functions beyond the output softmax, requires no dynamic memory allocation, and fits entirely in flash on the EFR32xG26. For the given feature engineering quality, it achieves ~85% accuracy — comparable to small neural networks at a fraction of the inference cost.
+**Normalization note:** A StandardScaler was applied during training (zero-mean, unit-variance per feature). At export, the scaler parameters were **absorbed directly into the weight matrix and bias vector** — the embedded firmware performs no separate normalization step. This keeps the inference path minimal: one dot product + one softmax.
+
+**Why logistic regression?** It is deterministic, requires no dynamic memory allocation, and fits entirely in flash. The MFCC + delta + delta-delta feature engineering is expressive enough that this model achieves **99.67% test accuracy** on the CWRU benchmark — matching or exceeding small neural networks at a fraction of the parameter count and inference cost.
 
 ---
 
@@ -156,17 +161,21 @@ The inference task calls `sl_sleeptimer_delay_millisecond(INFERENCE_INTERVAL_MS)
 
 ---
 
-## Memory Layout (approximate)
+## Memory Layout (measured from build)
 
 | Region | Usage | Size |
 |--------|-------|------|
-| Flash — model weights | `g_mfcc_multiclass_weight` | ~179 KB |
-| Flash — mel/DCT matrices | `g_mfcc_multiclass_mel_matrix` + `g_mfcc_multiclass_dct_matrix` | ~42 KB |
-| Flash — firmware | drivers + RTOS + app code | ~100 KB |
+| **Firmware binary (.bin)** | Total flash image | **381.5 KB** |
+| .text section | Code + constants + model weights | ≈ 389.8 KB |
+| .bss section | RAM (zero-init) | ≈ **295.1 KB** *(see note)* |
+| Flash — model weights (float) | `g_mfcc_multiclass_weight` + bias | **44.81 KB** |
+| Flash — INT8 TFLite model | `cwru_mfcc_multiclass_int8.tflite` | **12.7 KB** |
 | RAM — PCM buffer | `pcm_window[16000]` (int16) | 32 KB |
 | RAM — feature buffer | `latest_feature_vector[1911]` (float32) | 7.5 KB |
-| RAM — intermediate FFT | `s_fft_input/output`, `s_power_spectrum` | ~6 KB |
+| RAM — FFT intermediate | `s_fft_input/output`, `s_power_spectrum` | ~6 KB |
 | RAM — MFCC/delta arrays | `s_mfcc`, `s_delta`, `s_delta2` | ~8 KB |
+
+> **RAM note:** The `.bss` section (295.1 KB) is inflated by stock SDK / TFLM template components that remain linked, including a **100 KB tensor arena** from the original TFLM framework scaffold. The custom inference path (`mfcc_multiclass_inference.cc`) does not use the TFLM interpreter and this arena is never used at runtime. Removing the TFLM component from `.slcp` is a known future optimization.
 
 ---
 
