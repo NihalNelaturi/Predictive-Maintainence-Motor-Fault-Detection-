@@ -2,6 +2,7 @@
 Debug/
 Release/
 cmake_gcc/build/
+*.jlink
 
 # Simplicity Studio metadata
 .metadata/
@@ -14,6 +15,7 @@ autogen/compiler.log
 *.log
 *.tmp
 *.bak
+*.orig
 
 # OS files
 .DS_Store
@@ -29,3 +31,9 @@ Thumbs.db
 *.bin
 *.lst
 *.axf
+*.s37
+*.srec
+
+# Compiler / linker artifacts
+*.a
+*.out
